@@ -11,6 +11,10 @@ type apiConfig struct {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 	w.WriteHeader(http.StatusOK)
@@ -32,7 +36,13 @@ func (ac *apiConfig) metricsCountMiddleware(next http.Handler) http.Handler {
 }
 
 func (ac *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+
 	ac.fileserverhits.Store(0)
+
 	w.WriteHeader(http.StatusOK)
+
 	w.Write([]byte("Hits to file have been reset!"))
 }
