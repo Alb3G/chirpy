@@ -14,10 +14,14 @@ const (
 func main() {
 	mux := http.NewServeMux()
 
-	fileServer := http.FileServer(http.Dir(FILE_PATH_ROOT))
+	apiCfg := &apiConfig{}
 
-	mux.Handle("/app/", http.StripPrefix("/app", fileServer))
 	mux.HandleFunc("/healthz", healthHandler)
+	mux.HandleFunc("/metrics", apiCfg.hitsHandler)
+	mux.HandleFunc("/reset", apiCfg.resetHitsHandler)
+
+	fileServer := http.FileServer(http.Dir(FILE_PATH_ROOT))
+	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.metricsCountMiddleware(fileServer)))
 
 	s := &http.Server{
 		Addr:    ":" + PORT,

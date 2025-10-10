@@ -1,11 +1,38 @@
 package main
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+	"sync/atomic"
+)
 
-func healthHandler(rw http.ResponseWriter, r *http.Request) {
-	rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+type apiConfig struct {
+	fileserverhits atomic.Int32
+}
 
-	rw.WriteHeader(http.StatusOK)
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	rw.Write([]byte(http.StatusText(http.StatusOK)))
+	w.WriteHeader(http.StatusOK)
+
+	w.Write([]byte(http.StatusText(http.StatusOK)))
+}
+
+func (ac *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Hits: %d", ac.fileserverhits.Load())
+}
+
+func (ac *apiConfig) metricsCountMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ac.fileserverhits.Add(1)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (ac *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
+	ac.fileserverhits.Store(0)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Hits to file have been reset!"))
 }
