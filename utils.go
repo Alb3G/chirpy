@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/Alb3G/chirpy/internal/database"
 )
 
 func respondWithError(w http.ResponseWriter, statusCode int, errMsg string) {
@@ -41,4 +43,14 @@ func validateChirpBody(body string, bannedWords []string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+func toChirp(dbc database.Chirp) Chirp {
+	return Chirp{
+		ID:        dbc.ID,
+		CreatedAt: dbc.CreatedAt,
+		UpdatedAt: dbc.UpdatedAt,
+		Body:      dbc.Body,
+		UserId:    dbc.UserID,
+	}
 }

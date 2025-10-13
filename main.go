@@ -42,6 +42,7 @@ func main() {
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHitsHandler)
 	mux.HandleFunc("POST /api/users", apiCfg.usersHandler)
 	mux.HandleFunc("POST /api/chirps", apiCfg.chirpsHandler)
+	mux.HandleFunc("GET /api/chirps", apiCfg.getChirpsHandler)
 
 	fileServer := http.FileServer(http.Dir(FILE_PATH_ROOT))
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.metricsCountMiddleware(fileServer)))

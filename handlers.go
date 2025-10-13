@@ -11,6 +11,7 @@ import (
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		respondWithError(w, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed))
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -46,6 +47,7 @@ func (ac *apiConfig) metricsCountMiddleware(next http.Handler) http.Handler {
 func (ac *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
 	if ac.Env != "dev" {
 		respondWithError(w, 403, "This endpoint is only available in dev environment")
+		return
 	}
 
 	ac.Queries.DeleteUsers(r.Context())
@@ -65,6 +67,7 @@ func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 	dbUser, err := ac.Queries.CreateUser(r.Context(), userReqdata.Email)
 	if err != nil {
 		respondWithError(w, 500, err.Error())
+		return
 	}
 
 	user := User{
@@ -78,8 +81,6 @@ func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	if r.Header.Get("Content-Type") != "application/json" {
 		respondWithError(w, http.StatusBadRequest, "Something went wrong")
 		return
@@ -107,11 +108,20 @@ func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, 201, Chirp{
-		ID:        chirp.ID,
-		CreatedAt: chirp.CreatedAt,
-		UpdatedAt: chirp.UpdatedAt,
-		Body:      chirp.Body,
-		UserId:    chirp.UserID,
-	})
+	respondWithJSON(w, 201, toChirp(chirp))
+}
+
+func (ac *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	dbChirps, err := ac.Queries.GetChirps(r.Context())
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	resChirpsArr := make([]Chirp, 0)
+	for _, dbChirp := range dbChirps {
+		resChirpsArr = append(resChirpsArr, toChirp(dbChirp))
+	}
+
+	respondWithJSON(w, 200, resChirpsArr)
 }
