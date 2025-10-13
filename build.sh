@@ -1,1 +1,0 @@
-go build -o out && chmod 777 out && ./out

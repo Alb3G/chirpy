@@ -4,28 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync/atomic"
+
+	"github.com/Alb3G/chirpy/internal/database"
 )
-
-type apiConfig struct {
-	fileserverhits atomic.Int32
-}
-
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
-type SuccessResponse struct {
-	Valid bool `json:"valid"`
-}
-
-type ChirpBody struct {
-	Body string `json:"body"`
-}
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		respondWithError(w, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed))
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -33,30 +18,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	w.Write([]byte(http.StatusText(http.StatusOK)))
-}
-
-func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Header.Get("Content-Type") != "application/json" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Something went wrong"})
-		return
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
-
-	var body ChirpBody
-	decoder.Decode(&body)
-
-	if len(body.Body) > 140 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Chirp is too long"})
-		return
-	}
-
-	json.NewEncoder(w).Encode(SuccessResponse{Valid: true})
 }
 
 func (ac *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
@@ -81,14 +42,76 @@ func (ac *apiConfig) metricsCountMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Modificar response para devolver un json en lugar de texto plano.
 func (ac *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if ac.Env != "dev" {
+		respondWithError(w, 403, "This endpoint is only available in dev environment")
 	}
 
-	ac.fileserverhits.Store(0)
+	ac.Queries.DeleteUsers(r.Context())
 
 	w.WriteHeader(http.StatusOK)
 
-	w.Write([]byte("Hits to file have been reset!"))
+	w.Write([]byte("Users db has been reset."))
+}
+
+func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var userReqdata UserRequestData
+	decoder.Decode(&userReqdata)
+
+	dbUser, err := ac.Queries.CreateUser(r.Context(), userReqdata.Email)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+	}
+
+	user := User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+
+	respondWithJSON(w, 201, user)
+}
+
+func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		respondWithError(w, http.StatusBadRequest, "Something went wrong")
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var reqData ChirpBody
+	decoder.Decode(&reqData)
+
+	if len(reqData.Body) > 140 {
+		respondWithError(w, http.StatusBadRequest, "Something went wrong")
+		return
+	}
+
+	validatedBody := validateChirpBody(reqData.Body, []string{"kerfuffle", "sharbert", "fornax"})
+
+	chirp, err := ac.Queries.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body:   validatedBody,
+		UserID: reqData.UserId,
+	})
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 201, Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserId:    chirp.UserID,
+	})
 }
