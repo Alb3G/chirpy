@@ -15,6 +15,11 @@ type User struct {
 	Email     string    `json:"email"`
 }
 
+type UserRequestData struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type Chirp struct {
 	ID        uuid.UUID `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
@@ -40,8 +45,4 @@ type SuccessResponse struct {
 type ChirpBody struct {
 	Body   string    `json:"body"`
 	UserId uuid.UUID `json:"user_id"`
-}
-
-type UserRequestData struct {
-	Email string `json:"email"`
 }

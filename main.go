@@ -37,12 +37,16 @@ func main() {
 		Env:     env,
 	}
 
+	// GETs
 	mux.HandleFunc("GET /api/healthz", healthHandler)
+	mux.HandleFunc("GET /api/chirps", apiCfg.getChirpsHandler)
+	mux.HandleFunc("GET /api/chirps/{chirpId}", apiCfg.getChirpById)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.hitsHandler)
-	mux.HandleFunc("POST /admin/reset", apiCfg.resetHitsHandler)
+	// POSTs
 	mux.HandleFunc("POST /api/users", apiCfg.usersHandler)
 	mux.HandleFunc("POST /api/chirps", apiCfg.chirpsHandler)
-	mux.HandleFunc("GET /api/chirps", apiCfg.getChirpsHandler)
+	mux.HandleFunc("POST /api/login", apiCfg.loginHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.resetHitsHandler)
 
 	fileServer := http.FileServer(http.Dir(FILE_PATH_ROOT))
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.metricsCountMiddleware(fileServer)))

@@ -3,9 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
+	"github.com/Alb3G/chirpy/internal/auth"
 	"github.com/Alb3G/chirpy/internal/database"
+	"github.com/google/uuid"
 )
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,20 +67,29 @@ func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 	var userReqdata UserRequestData
 	decoder.Decode(&userReqdata)
 
-	dbUser, err := ac.Queries.CreateUser(r.Context(), userReqdata.Email)
+	if userReqdata.Email == "" || userReqdata.Password == "" {
+		respondWithError(w, 400, "Email and password required")
+		return
+	}
+
+	hash, err := auth.HashPassword(userReqdata.Password)
+	if err != nil {
+		respondWithError(w, 500, "Error hashing user password")
+		return
+	}
+
+	userParams := database.CreateUserParams{
+		Email:      userReqdata.Email,
+		HashedPass: hash,
+	}
+
+	dbUser, err := ac.Queries.CreateUser(r.Context(), userParams)
 	if err != nil {
 		respondWithError(w, 500, err.Error())
 		return
 	}
 
-	user := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
-	}
-
-	respondWithJSON(w, 201, user)
+	respondWithJSON(w, 201, toUser(dbUser))
 }
 
 func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
@@ -124,4 +136,42 @@ func (ac *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, 200, resChirpsArr)
+}
+
+func (ac *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
+	chirpId := r.PathValue("chirpId")
+	dbChirp, err := ac.Queries.GetChirpById(r.Context(), uuid.MustParse(chirpId))
+	if err != nil {
+		respondWithError(w, 404, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 200, toChirp(dbChirp))
+}
+
+func (ac *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var userReqdata UserRequestData
+	decoder.Decode(&userReqdata)
+
+	dbUser, err := ac.Queries.GetUserByEmail(r.Context(), userReqdata.Email)
+	if err != nil {
+		respondWithError(w, 401, "Failed to fetch user data by email")
+		return
+	}
+
+	match, err := auth.CheckPasswordHash(userReqdata.Password, dbUser.HashedPass)
+	if err != nil {
+		log.Printf("Password verification error for user %s: %v", userReqdata.Email, err)
+		respondWithError(w, 500, "Internal server error")
+		return
+	}
+
+	if !match {
+		respondWithError(w, 401, "Invalid credentials to login")
+	}
+
+	respondWithJSON(w, 200, toUser(dbUser))
 }

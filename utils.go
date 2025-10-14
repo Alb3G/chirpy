@@ -54,3 +54,12 @@ func toChirp(dbc database.Chirp) Chirp {
 		UserId:    dbc.UserID,
 	}
 }
+
+func toUser(dbu database.User) User {
+	return User{
+		ID:        dbu.ID,
+		CreatedAt: dbu.CreatedAt,
+		UpdatedAt: dbu.UpdatedAt,
+		Email:     dbu.Email,
+	}
+}
