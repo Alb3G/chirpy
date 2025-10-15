@@ -22,6 +22,7 @@ func main() {
 
 	dbUrl := os.Getenv("DB_URL")
 	env := os.Getenv("ENV")
+	secret := os.Getenv("TOKEN_SECRET")
 
 	db, err := sql.Open("postgres", dbUrl)
 	if err != nil {
@@ -33,8 +34,9 @@ func main() {
 	mux := http.NewServeMux()
 
 	apiCfg := &apiConfig{
-		Queries: queries,
-		Env:     env,
+		Queries:    queries,
+		Env:        env,
+		TokenScret: secret,
 	}
 
 	// GETs

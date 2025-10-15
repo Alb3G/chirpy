@@ -55,11 +55,18 @@ func toChirp(dbc database.Chirp) Chirp {
 	}
 }
 
-func toUser(dbu database.User) User {
+func toUser(dbu database.User, token *string) User {
+	tokenValue := ""
+
+	if token != nil {
+		tokenValue = *token
+	}
+
 	return User{
 		ID:        dbu.ID,
 		CreatedAt: dbu.CreatedAt,
 		UpdatedAt: dbu.UpdatedAt,
 		Email:     dbu.Email,
+		Token:     tokenValue,
 	}
 }

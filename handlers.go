@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/Alb3G/chirpy/internal/auth"
 	"github.com/Alb3G/chirpy/internal/database"
@@ -89,7 +90,7 @@ func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, 201, toUser(dbUser))
+	respondWithJSON(w, 201, toUser(dbUser, nil))
 }
 
 func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +105,18 @@ func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 	var reqData ChirpBody
 	decoder.Decode(&reqData)
 
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	user_uuid, err := auth.ValidateJWT(token, ac.TokenScret)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
 	if len(reqData.Body) > 140 {
 		respondWithError(w, http.StatusBadRequest, "Something went wrong")
 		return
@@ -113,7 +126,7 @@ func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 
 	chirp, err := ac.Queries.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   validatedBody,
-		UserID: reqData.UserId,
+		UserID: user_uuid,
 	})
 	if err != nil {
 		respondWithError(w, 500, err.Error())
@@ -173,5 +186,19 @@ func (ac *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 401, "Invalid credentials to login")
 	}
 
-	respondWithJSON(w, 200, toUser(dbUser))
+	var expires_in_seconds time.Duration
+	if userReqdata.ExpiresIn == 0 || userReqdata.ExpiresIn > 3600 {
+		expires_in_seconds = time.Second * 3600
+	} else {
+		expires_in_seconds = time.Duration(userReqdata.ExpiresIn)
+	}
+
+	token, err := auth.MakeJWT(dbUser.ID, ac.TokenScret, expires_in_seconds)
+	if err != nil {
+		respondWithError(w, 500, "Error while creating JWT")
+	}
+
+	domainUser := toUser(dbUser, &token)
+
+	respondWithJSON(w, 200, domainUser)
 }

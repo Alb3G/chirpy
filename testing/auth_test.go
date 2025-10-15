@@ -1,6 +1,7 @@
 package testing
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -64,5 +65,22 @@ func TestMakeAndValidateJWT(t *testing.T) {
 
 	if validatedUserId.String() != userId.String() {
 		t.Error("Error expecting token values to be equals")
+	}
+}
+
+func TestGetBearerToken(t *testing.T) {
+	testBearer := "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+	expectedResult := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+
+	header := http.Header{}
+	header.Add("Authorization", testBearer)
+
+	stripedToken, err := auth.GetBearerToken(header)
+	if err != nil {
+		t.Fatalf("Auth header or token split process failed")
+	}
+
+	if stripedToken != expectedResult {
+		t.Errorf("Result: %v expected to be equal to %v", stripedToken, expectedResult)
 	}
 }
