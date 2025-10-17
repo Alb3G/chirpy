@@ -34,7 +34,7 @@ type apiConfig struct {
 	fileserverhits atomic.Int32
 	Queries        *database.Queries
 	Env            string
-	TokenScret     string
+	TokenSecret    string
 }
 
 type ErrorResponse struct {

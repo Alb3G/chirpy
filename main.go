@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/Alb3G/chirpy/internal/database"
+	"github.com/didip/tollbooth/v7"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -34,10 +35,12 @@ func main() {
 	mux := http.NewServeMux()
 
 	apiCfg := &apiConfig{
-		Queries:    queries,
-		Env:        env,
-		TokenScret: secret,
+		Queries:     queries,
+		Env:         env,
+		TokenSecret: secret,
 	}
+
+	limiter := tollbooth.NewLimiter(5, nil)
 
 	// GETs
 	mux.HandleFunc("GET /api/healthz", healthHandler)
@@ -47,17 +50,17 @@ func main() {
 	// POSTs
 	mux.HandleFunc("POST /api/users", apiCfg.usersHandler)
 	mux.HandleFunc("POST /api/chirps", apiCfg.chirpsHandler)
-	mux.HandleFunc("POST /api/login", apiCfg.loginHandler)
+	mux.Handle("POST /api/login", tollbooth.LimitFuncHandler(limiter, apiCfg.loginHandler))
 	mux.HandleFunc("POST /api/refresh", apiCfg.refreshTokenHandler)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeTokenHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHitsHandler)
 
 	fileServer := http.FileServer(http.Dir(FILE_PATH_ROOT))
-	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.metricsCountMiddleware(fileServer)))
+	mux.Handle("/app/", http.StripPrefix("/app", fileServer))
 
 	s := &http.Server{
 		Addr:    ":" + PORT,
-		Handler: mux,
+		Handler: loggingMiddleware(mux),
 	}
 
 	fmt.Printf("Server running on port: 8080\n")

@@ -26,6 +26,8 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ac *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
 	w.Header().Set("Content-type", "text/html; charset=utf-8")
 
 	w.WriteHeader(http.StatusOK)
@@ -40,14 +42,18 @@ func (ac *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, template, ac.fileserverhits.Load())
 }
 
-func (ac *apiConfig) metricsCountMiddleware(next http.Handler) http.Handler {
+func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ac.fileserverhits.Add(1)
+		start := time.Now()
+		log.Printf("[%s] %s %s", r.Method, r.URL.Path, r.RemoteAddr)
 		next.ServeHTTP(w, r)
+		log.Printf("Completed in %v", time.Since(start))
 	})
 }
 
 func (ac *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
 	if ac.Env != "dev" {
 		respondWithError(w, 403, "This endpoint is only available in dev environment")
 		return
@@ -67,11 +73,17 @@ func (ac *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
 	var userReqdata UserRequestData
-	decoder.Decode(&userReqdata)
+	err := decoder.Decode(&userReqdata)
+	if err != nil {
+		respondWithError(w, 400, "Invalid JSON format")
+		return
+	}
 
 	if userReqdata.Email == "" || userReqdata.Password == "" {
 		respondWithError(w, 400, "Email and password required")
@@ -105,6 +117,8 @@ func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
 	if r.Header.Get("Content-Type") != "application/json" {
 		respondWithError(w, http.StatusBadRequest, "Something went wrong")
 		return
@@ -114,7 +128,11 @@ func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	var reqData ChirpBody
-	decoder.Decode(&reqData)
+	err := decoder.Decode(&reqData)
+	if err != nil {
+		respondWithError(w, 400, "Invalid JSON format")
+		return
+	}
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -122,7 +140,7 @@ func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user_uuid, err := auth.ValidateJWT(token, ac.TokenScret)
+	user_uuid, err := auth.ValidateJWT(token, ac.TokenSecret)
 	if err != nil {
 		respondWithError(w, 401, err.Error())
 		return
@@ -148,6 +166,8 @@ func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ac *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
 	dbChirps, err := ac.Queries.GetChirps(r.Context())
 	if err != nil {
 		respondWithError(w, 500, err.Error())
@@ -163,8 +183,16 @@ func (ac *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ac *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
 	chirpId := r.PathValue("chirpId")
-	dbChirp, err := ac.Queries.GetChirpById(r.Context(), uuid.MustParse(chirpId))
+	userUuid, err := uuid.Parse(chirpId)
+	if err != nil {
+		respondWithError(w, 400, "Invalid chirp ID format")
+		return
+	}
+
+	dbChirp, err := ac.Queries.GetChirpById(r.Context(), userUuid)
 	if err != nil {
 		respondWithError(w, 404, err.Error())
 		return
@@ -178,11 +206,17 @@ Implement cache to store the logged user in order to avoid multiple creations
 of jwt and refresh tokens in the db for the same user.
 */
 func (ac *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
 	var userReqdata UserRequestData
-	decoder.Decode(&userReqdata)
+	err := decoder.Decode(&userReqdata)
+	if err != nil {
+		respondWithError(w, 400, "Invalid JSON format")
+		return
+	}
 
 	dbUser, err := ac.Queries.GetUserByEmail(r.Context(), userReqdata.Email)
 	if err != nil {
@@ -202,7 +236,7 @@ func (ac *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.MakeJWT(dbUser.ID, ac.TokenScret, time.Second*3600)
+	token, err := auth.MakeJWT(dbUser.ID, ac.TokenSecret, time.Second*3600)
 	if err != nil {
 		respondWithError(w, 500, "Error while creating JWT")
 		return
@@ -263,7 +297,7 @@ func (ac *apiConfig) refreshTokenHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	newJwt, err := auth.MakeJWT(user.ID, ac.TokenScret, time.Hour)
+	newJwt, err := auth.MakeJWT(user.ID, ac.TokenSecret, time.Hour)
 	if err != nil {
 		respondWithError(w, 401, err.Error())
 		return
