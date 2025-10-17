@@ -5,9 +5,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Alb3G/chirpy/internal/database"
 )
+
+const DAY = time.Hour * 24
 
 func respondWithError(w http.ResponseWriter, statusCode int, errMsg string) {
 	if statusCode > 499 {
@@ -55,7 +58,7 @@ func toChirp(dbc database.Chirp) Chirp {
 	}
 }
 
-func toUser(dbu database.User, token *string) User {
+func toUser(dbu database.User, token *string) (User, error) {
 	tokenValue := ""
 
 	if token != nil {
@@ -63,10 +66,11 @@ func toUser(dbu database.User, token *string) User {
 	}
 
 	return User{
-		ID:        dbu.ID,
-		CreatedAt: dbu.CreatedAt,
-		UpdatedAt: dbu.UpdatedAt,
-		Email:     dbu.Email,
-		Token:     tokenValue,
-	}
+		ID:           dbu.ID,
+		CreatedAt:    dbu.CreatedAt,
+		UpdatedAt:    dbu.UpdatedAt,
+		Email:        dbu.Email,
+		Token:        tokenValue,
+		RefreshToken: "",
+	}, nil
 }

@@ -47,18 +47,23 @@ func (ac *apiConfig) metricsCountMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// Modificar response para devolver un json en lugar de texto plano.
 func (ac *apiConfig) resetHitsHandler(w http.ResponseWriter, r *http.Request) {
 	if ac.Env != "dev" {
 		respondWithError(w, 403, "This endpoint is only available in dev environment")
 		return
 	}
 
-	ac.Queries.DeleteUsers(r.Context())
+	err := ac.Queries.DeleteUsers(r.Context())
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
 
-	w.WriteHeader(http.StatusOK)
-
-	w.Write([]byte("Users db has been reset."))
+	respondWithJSON(w, 200, struct {
+		Result string `json:"result"`
+	}{
+		Result: "Database has been reset succesfully",
+	})
 }
 
 func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
@@ -86,11 +91,17 @@ func (ac *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 
 	dbUser, err := ac.Queries.CreateUser(r.Context(), userParams)
 	if err != nil {
+		respondWithError(w, 400, "Account already exists")
+		return
+	}
+
+	domain_user, err := toUser(dbUser, nil)
+	if err != nil {
 		respondWithError(w, 500, err.Error())
 		return
 	}
 
-	respondWithJSON(w, 201, toUser(dbUser, nil))
+	respondWithJSON(w, 201, domain_user)
 }
 
 func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +173,10 @@ func (ac *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, 200, toChirp(dbChirp))
 }
 
+/*
+Implement cache to store the logged user in order to avoid multiple creations
+of jwt and refresh tokens in the db for the same user.
+*/
 func (ac *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
@@ -171,7 +186,7 @@ func (ac *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	dbUser, err := ac.Queries.GetUserByEmail(r.Context(), userReqdata.Email)
 	if err != nil {
-		respondWithError(w, 401, "Failed to fetch user data by email")
+		respondWithError(w, 401, "No user found for the email provided")
 		return
 	}
 
@@ -183,22 +198,96 @@ func (ac *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !match {
-		respondWithError(w, 401, "Invalid credentials to login")
+		respondWithError(w, 401, "Wrong credentials")
+		return
 	}
 
-	var expires_in_seconds time.Duration
-	if userReqdata.ExpiresIn == 0 || userReqdata.ExpiresIn > 3600 {
-		expires_in_seconds = time.Second * 3600
-	} else {
-		expires_in_seconds = time.Duration(userReqdata.ExpiresIn)
-	}
-
-	token, err := auth.MakeJWT(dbUser.ID, ac.TokenScret, expires_in_seconds)
+	token, err := auth.MakeJWT(dbUser.ID, ac.TokenScret, time.Second*3600)
 	if err != nil {
 		respondWithError(w, 500, "Error while creating JWT")
+		return
 	}
 
-	domainUser := toUser(dbUser, &token)
+	domainUser, err := toUser(dbUser, &token)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	refresh_token := auth.MakeRefreshToken()
+	refresh_token_params := database.CreateRefreshTokenParams{
+		Token:     refresh_token,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		UserID:    domainUser.ID,
+		ExpiresAt: time.Now().Add(DAY * 60),
+	}
+	_, err = ac.Queries.CreateRefreshToken(r.Context(), refresh_token_params)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	domainUser.RefreshToken = refresh_token
 
 	respondWithJSON(w, 200, domainUser)
+}
+
+// Endpoint to refresh access tokens
+func (ac *apiConfig) refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	refresh_token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 401, "Invalid Bearer format")
+		return
+	}
+
+	db_ref_Token, err := ac.Queries.GetToken(r.Context(), refresh_token)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	if db_ref_Token.RevokedAt.Valid {
+		respondWithError(w, 401, "Token is revoked")
+		return
+	}
+
+	if db_ref_Token.ExpiresAt.Before(time.Now()) {
+		respondWithError(w, 401, "Token is expired")
+		return
+	}
+
+	user, err := ac.Queries.GetUserByToken(r.Context(), db_ref_Token.Token)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	newJwt, err := auth.MakeJWT(user.ID, ac.TokenScret, time.Hour)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 200, struct {
+		Token string `json:"token"`
+	}{
+		Token: newJwt,
+	})
+}
+
+func (ac *apiConfig) revokeTokenHandler(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	err = ac.Queries.RevokeToken(r.Context(), token)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	w.WriteHeader(204)
 }

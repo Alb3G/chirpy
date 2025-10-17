@@ -48,6 +48,8 @@ func main() {
 	mux.HandleFunc("POST /api/users", apiCfg.usersHandler)
 	mux.HandleFunc("POST /api/chirps", apiCfg.chirpsHandler)
 	mux.HandleFunc("POST /api/login", apiCfg.loginHandler)
+	mux.HandleFunc("POST /api/refresh", apiCfg.refreshTokenHandler)
+	mux.HandleFunc("POST /api/revoke", apiCfg.revokeTokenHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHitsHandler)
 
 	fileServer := http.FileServer(http.Dir(FILE_PATH_ROOT))
