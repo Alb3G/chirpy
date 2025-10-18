@@ -72,5 +72,6 @@ func toUser(dbu database.User, token *string) (User, error) {
 		Email:        dbu.Email,
 		Token:        tokenValue,
 		RefreshToken: "",
+		IsChirpyRed:  dbu.IsChirpyRed.Bool,
 	}, nil
 }

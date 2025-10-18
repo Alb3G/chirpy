@@ -13,16 +13,13 @@ import (
 )
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		respondWithError(w, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed))
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-
-	w.WriteHeader(http.StatusOK)
-
-	w.Write([]byte(http.StatusText(http.StatusOK)))
+	respondWithJSON(w, 200, struct {
+		Result    bool      `json:"alive"`
+		Timestamp time.Time `json:"timestamp"`
+	}{
+		Result:    true,
+		Timestamp: time.Now().UTC(),
+	})
 }
 
 func (ac *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
@@ -327,6 +324,8 @@ func (ac *apiConfig) revokeTokenHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (ac *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
 	accessToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		respondWithError(w, 401, err.Error())
@@ -409,6 +408,32 @@ func (ac *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
 	err = ac.Queries.DeleteChirpById(r.Context(), chirpID)
 	if err != nil {
 		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 204, struct{}{})
+}
+
+func (ac *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
+	var upgradeRequest UpgradeRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.Decode(&upgradeRequest)
+
+	if upgradeRequest.Event != "user.upgraded" {
+		respondWithJSON(w, 204, struct{}{})
+		return
+	}
+
+	success, err := ac.Queries.UpgradeUserById(r.Context(), upgradeRequest.Data.UserId)
+	if err != nil {
+		respondWithError(w, 404, err.Error())
+		return
+	}
+
+	if success == 0 {
+		respondWithError(w, 404, "User not found")
 		return
 	}
 

@@ -15,6 +15,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Token        string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 type UserRequestData struct {
@@ -47,4 +48,11 @@ type SuccessResponse struct {
 
 type ChirpBody struct {
 	Body string `json:"body"`
+}
+
+type UpgradeRequest struct {
+	Event string `json:"event"`
+	Data  struct {
+		UserId uuid.UUID `json:"user_id"`
+	}
 }

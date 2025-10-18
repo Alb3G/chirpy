@@ -53,6 +53,7 @@ func main() {
 	mux.Handle("POST /api/login", tollbooth.LimitFuncHandler(limiter, apiCfg.loginHandler))
 	mux.HandleFunc("POST /api/refresh", apiCfg.refreshTokenHandler)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeTokenHandler)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.upgradeUser)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHitsHandler)
 	// PUTs
 	mux.HandleFunc("PUT /api/users", apiCfg.updateUserHandler)
