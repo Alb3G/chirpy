@@ -325,3 +325,92 @@ func (ac *apiConfig) revokeTokenHandler(w http.ResponseWriter, r *http.Request) 
 
 	w.WriteHeader(204)
 }
+
+func (ac *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	userID, err := auth.ValidateJWT(accessToken, ac.TokenSecret)
+	if err != nil {
+		respondWithError(w, 401, "Invalid Access token")
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	var body UserRequestData
+	err = decoder.Decode(&body)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(body.Password)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	dbUpdateUserParams := database.UpdateUserParams{
+		Email:      body.Email,
+		HashedPass: hashedPassword,
+		ID:         userID,
+	}
+
+	updatedUser, err := ac.Queries.UpdateUser(r.Context(), dbUpdateUserParams)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	domainUser, err := toUser(updatedUser, &accessToken)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 200, domainUser)
+}
+
+func (ac *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, 401, err.Error())
+		return
+	}
+
+	userUUID, err := auth.ValidateJWT(accessToken, ac.TokenSecret)
+	if err != nil {
+		respondWithError(w, 403, err.Error())
+		return
+	}
+
+	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		respondWithError(w, 403, err.Error())
+		return
+	}
+
+	chirp, err := ac.Queries.GetChirpById(r.Context(), chirpID)
+	if err != nil {
+		respondWithError(w, 404, "Chirp Not found!")
+		return
+	}
+
+	if chirp.UserID != userUUID {
+		respondWithError(w, 403, "Cant delete a chirp you didnt write")
+		return
+	}
+
+	err = ac.Queries.DeleteChirpById(r.Context(), chirpID)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 204, struct{}{})
+}

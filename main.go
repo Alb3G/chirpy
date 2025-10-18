@@ -54,6 +54,10 @@ func main() {
 	mux.HandleFunc("POST /api/refresh", apiCfg.refreshTokenHandler)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeTokenHandler)
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHitsHandler)
+	// PUTs
+	mux.HandleFunc("PUT /api/users", apiCfg.updateUserHandler)
+	// DELETEs
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirp)
 
 	fileServer := http.FileServer(http.Dir(FILE_PATH_ROOT))
 	mux.Handle("/app/", http.StripPrefix("/app", fileServer))
