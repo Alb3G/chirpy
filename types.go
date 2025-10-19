@@ -36,6 +36,7 @@ type apiConfig struct {
 	Queries        *database.Queries
 	Env            string
 	TokenSecret    string
+	Key            string
 }
 
 type ErrorResponse struct {

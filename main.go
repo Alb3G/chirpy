@@ -24,6 +24,7 @@ func main() {
 	dbUrl := os.Getenv("DB_URL")
 	env := os.Getenv("ENV")
 	secret := os.Getenv("TOKEN_SECRET")
+	polka_key := os.Getenv("POLKA_KEY")
 
 	db, err := sql.Open("postgres", dbUrl)
 	if err != nil {
@@ -38,6 +39,7 @@ func main() {
 		Queries:     queries,
 		Env:         env,
 		TokenSecret: secret,
+		Key:         polka_key,
 	}
 
 	limiter := tollbooth.NewLimiter(5, nil)

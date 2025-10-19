@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/Alb3G/chirpy/internal/auth"
@@ -162,8 +163,35 @@ func (ac *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, 201, toChirp(chirp))
 }
 
+func getUserChirps(w http.ResponseWriter, r *http.Request, ac *apiConfig, author_id string) {
+	parsed_uuid, err := uuid.Parse(author_id)
+	if err != nil {
+		respondWithError(w, 400, "Invalid author_id was provided")
+		return
+	}
+
+	userChirps := make([]Chirp, 0)
+	dbChirps, err := ac.Queries.GetChirpsByUserId(r.Context(), parsed_uuid)
+	if err != nil {
+		respondWithError(w, 400, err.Error())
+		return
+	}
+
+	for _, dbChirp := range dbChirps {
+		userChirps = append(userChirps, toChirp(dbChirp))
+	}
+
+	respondWithJSON(w, 200, userChirps)
+}
+
 func (ac *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
+	author_id := r.URL.Query().Get("author_id")
+	if author_id != "" {
+		getUserChirps(w, r, ac, author_id)
+		return
+	}
 
 	dbChirps, err := ac.Queries.GetChirps(r.Context())
 	if err != nil {
@@ -174,6 +202,19 @@ func (ac *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	resChirpsArr := make([]Chirp, 0)
 	for _, dbChirp := range dbChirps {
 		resChirpsArr = append(resChirpsArr, toChirp(dbChirp))
+	}
+
+	order_arg := r.URL.Query().Get("sort")
+
+	if order_arg != "desc" && order_arg != "asc" || order_arg == "" {
+		respondWithError(w, 400, "Invalid sort parameter. Must be 'asc' or 'desc'")
+		return
+	}
+
+	if order_arg == "desc" {
+		slices.SortFunc(resChirpsArr, func(a, b Chirp) int {
+			return b.CreatedAt.Compare(a.CreatedAt)
+		})
 	}
 
 	respondWithJSON(w, 200, resChirpsArr)
@@ -416,6 +457,11 @@ func (ac *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
 
 func (ac *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576) // 1MB limit
+
+	if apiKey, err := auth.GetApiKey(r.Header); err != nil || apiKey != ac.Key {
+		respondWithError(w, 401, err.Error())
+		return
+	}
 
 	var upgradeRequest UpgradeRequest
 	decoder := json.NewDecoder(r.Body)
